@@ -12,6 +12,7 @@ are in the SAME folder as this file.
 import streamlit as st
 import numpy as np
 import pandas as pd
+import pickle
 import os
 
 # ── Page Config ──────────────────────────────────────────────────────────────
@@ -24,9 +25,12 @@ st.set_page_config(
 # ── Load Model ────────────────────────────────────────────────────────────────
 @st.cache_resource
 def load_model():
-    model        = joblib.load("fraud_model.pkl")
-    scaler       = joblib.load("scaler.pkl")
-    feature_names = joblib.load("feature_names.pkl")
+    with open("fraud_model.pkl", "rb") as model_file:
+        model = pickle.load(model_file)
+    with open("scaler.pkl", "rb") as scaler_file:
+        scaler = pickle.load(scaler_file)
+    with open("feature_names.pkl", "rb") as feature_file:
+        feature_names = pickle.load(feature_file)
     return model, scaler, feature_names
 
 # ── Header ────────────────────────────────────────────────────────────────────
