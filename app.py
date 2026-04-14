@@ -1,213 +1,118 @@
 """
-Credit Card Fraud Detection — Streamlit App
-==========================================
-How to run:
-    pip install streamlit joblib scikit-learn numpy pandas
-    streamlit run app.py
-
-Make sure fraud_model.pkl, scaler.pkl, and feature_names.pkl
-are in the SAME folder as this file.
+Credit Card Fraud Detection — Demo Streamlit App
+Run: streamlit run app.py
 """
 
 import streamlit as st
 import numpy as np
-import pandas as pd
 import joblib
 import os
 
-# ── Page Config ──────────────────────────────────────────────────────────────
-st.set_page_config(
-    page_title="Credit Card Fraud Detector",
-    page_icon="💳",
-    layout="centered"
-)
+st.set_page_config(page_title="Fraud Detection Demo", page_icon="💳", layout="centered")
 
 # ── Load Model ────────────────────────────────────────────────────────────────
 @st.cache_resource
 def load_model():
-    model        = joblib.load("fraud_model.pkl")
-    scaler       = joblib.load("scaler.pkl")
-    feature_names = joblib.load("feature_names.pkl")
-    return model, scaler, feature_names
+    return joblib.load("fraud_model.pkl"), joblib.load("feature_names.pkl")
 
-# ── Header ────────────────────────────────────────────────────────────────────
+# ── Pre-filled test cases from the actual dataset ─────────────────────────────
+# These are real rows from creditcard.csv (scaled values included)
+
+LEGIT_CASE = {
+    "label": "Legitimate Transaction",
+    "amount": 149.62,
+    "time": 0.0,
+    "V1": -1.3598, "V2": -0.0728, "V3":  2.5363, "V4":  1.3782, "V5": -0.3383,
+    "V6":  0.4624, "V7":  0.2396, "V8":  0.0987, "V9":  0.3638, "V10": 0.0908,
+    "V11": -0.5516,"V12": -0.6178,"V13": -0.9913,"V14": -0.3112,"V15":  1.4682,
+    "V16": -0.4704,"V17":  0.2080,"V18":  0.0258,"V19":  0.4040,"V20":  0.2514,
+    "V21": -0.0183,"V22":  0.2778,"V23": -0.1105,"V24":  0.0669,"V25":  0.1285,
+    "V26": -0.1891,"V27":  0.1336,"V28": -0.0211,
+    "Amount_Scaled": 0.244, "Time_Scaled": -1.996
+}
+
+FRAUD_CASE = {
+    "label": "Fraudulent Transaction",
+    "amount": 1.00,
+    "time": 406.0,
+    "V1": -2.3122, "V2":  1.9519, "V3": -1.6096, "V4":  3.9979, "V5": -0.5221,
+    "V6": -1.4265, "V7": -2.5374, "V8": -0.0700, "V9": -0.2752,"V10": -0.5754,
+    "V11":  1.9781,"V12": -1.2328,"V13":  0.7802,"V14": -2.3899,"V15":  0.4456,
+    "V16": -0.9334,"V17": -0.7801,"V18":  0.7501,"V19": -0.8226,"V20":  0.5382,
+    "V21":  1.3458,"V22": -1.1196,"V23":  0.1750,"V24": -0.4514,"V25": -0.2372,
+    "V26": -0.6385,"V27":  0.1011,"V28":  0.1045,
+    "Amount_Scaled": -0.342, "Time_Scaled": -1.988
+}
+
+def predict(case, model, feature_names):
+    row = [case.get(f, 0.0) for f in feature_names]
+    arr = np.array(row).reshape(1, -1)
+    pred = model.predict(arr)[0]
+    prob = model.predict_proba(arr)[0]
+    return pred, prob
+
+# ── UI ────────────────────────────────────────────────────────────────────────
 st.title("💳 Credit Card Fraud Detection")
-st.markdown("""
-> **AI Mini Project** — Uses a trained Random Forest model to predict whether
-> a credit card transaction is **Fraudulent** or **Legitimate**.
-""")
-
+st.markdown("**AI PBL Demo** — Click a button to test the model on a real transaction from the dataset.")
 st.divider()
 
-# ── Check if model files exist ────────────────────────────────────────────────
-model_files = ["fraud_model.pkl", "scaler.pkl", "feature_names.pkl"]
-missing = [f for f in model_files if not os.path.exists(f)]
-
-if missing:
-    st.error(f"⚠️ Missing model files: {', '.join(missing)}")
-    st.info("""
-    **Steps to fix:**
-    1. Run the Colab notebook completely
-    2. Download `fraud_model.pkl`, `scaler.pkl`, `feature_names.pkl`
-    3. Place them in the same folder as `app.py`
-    4. Restart the Streamlit app
-    """)
+# Check files
+if not os.path.exists("fraud_model.pkl"):
+    st.error("⚠️ fraud_model.pkl not found. Run the Colab notebook first and place the .pkl files here.")
     st.stop()
 
-model, scaler, feature_names = load_model()
-st.success("✅ Model loaded successfully!")
-
-# ── Sidebar — About ───────────────────────────────────────────────────────────
-with st.sidebar:
-    st.header("ℹ️ About")
-    st.markdown("""
-    **Dataset:** Kaggle Credit Card Fraud  
-    **Model:** Random Forest Classifier  
-    **Trained on:** 284,807 transactions  
-    **Fraud cases:** Only 492 (0.17%)  
-
-    ---
-    **Metrics on test set:**
-    - Precision: ~0.95
-    - Recall:    ~0.84
-    - F1-Score:  ~0.89
-    - ROC-AUC:   ~0.97
-    """)
-    st.markdown("---")
-    st.markdown("**AI Subject — Mini Project**")
-
-# ── Tabs ──────────────────────────────────────────────────────────────────────
-tab1, tab2 = st.tabs(["🔍 Single Prediction", "📂 Batch Prediction (CSV)"])
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# TAB 1 — Single Transaction
-# ═══════════════════════════════════════════════════════════════════════════════
-with tab1:
-    st.subheader("Enter Transaction Details")
-    st.info("The V1–V28 features are PCA-transformed values from the original dataset.")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        amount = st.number_input("Transaction Amount ($)", min_value=0.0,
-                                  max_value=30000.0, value=100.0, step=0.01)
-        time   = st.number_input("Time (seconds from first transaction)",
-                                  min_value=0.0, max_value=200000.0, value=50000.0)
-
-    st.markdown("**PCA Features (V1 – V14):**")
-    cols_a = st.columns(7)
-    v_vals = {}
-    for i in range(1, 15):
-        with cols_a[(i-1) % 7]:
-            v_vals[f"V{i}"] = st.number_input(f"V{i}", value=0.0,
-                                               format="%.4f", key=f"v{i}")
-
-    st.markdown("**PCA Features (V15 – V28):**")
-    cols_b = st.columns(7)
-    for i in range(15, 29):
-        with cols_b[(i-15) % 7]:
-            v_vals[f"V{i}"] = st.number_input(f"V{i}", value=0.0,
-                                               format="%.4f", key=f"v{i}")
-
-    st.markdown("---")
-
-    # ── Quick Test Buttons ────────────────────────────────────────────────────
-    col_a, col_b = st.columns(2)
-    with col_a:
-        if st.button("🧪 Load Sample FRAUD Transaction"):
-            st.session_state["sample"] = "fraud"
-            st.rerun()
-    with col_b:
-        if st.button("🧪 Load Sample LEGIT Transaction"):
-            st.session_state["sample"] = "legit"
-            st.rerun()
-
-    # ── Predict Button ────────────────────────────────────────────────────────
-    if st.button("🔍 Predict", type="primary", use_container_width=True):
-        # Build input — order must match feature_names
-        input_dict = {f"V{i}": v_vals[f"V{i}"] for i in range(1, 29)}
-        input_dict["Amount_Scaled"] = (amount - 88.35) / 250.12  # approximate scaling
-        input_dict["Time_Scaled"]   = (time   - 94813) / 47488
-
-        # Reorder to match training feature order
-        input_row = [input_dict.get(f, 0.0) for f in feature_names]
-        input_array = np.array(input_row).reshape(1, -1)
-
-        prediction   = model.predict(input_array)[0]
-        probability  = model.predict_proba(input_array)[0]
-
-        st.markdown("---")
-        st.subheader("🎯 Prediction Result")
-
-        if prediction == 1:
-            st.error("🚨 **FRAUDULENT TRANSACTION DETECTED!**")
-            st.metric("Fraud Probability",
-                      f"{probability[1]*100:.2f}%",
-                      delta="High Risk", delta_color="inverse")
-        else:
-            st.success("✅ **LEGITIMATE TRANSACTION**")
-            st.metric("Legitimate Probability",
-                      f"{probability[0]*100:.2f}%",
-                      delta="Low Risk")
-
-        # Probability bar
-        st.markdown("**Confidence Breakdown:**")
-        prob_df = pd.DataFrame({
-            "Class": ["Legitimate", "Fraudulent"],
-            "Probability": [probability[0], probability[1]]
-        })
-        st.bar_chart(prob_df.set_index("Class"))
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# TAB 2 — Batch CSV Prediction
-# ═══════════════════════════════════════════════════════════════════════════════
-with tab2:
-    st.subheader("Upload a CSV File for Batch Prediction")
-    st.info("Upload a CSV with the same columns as the training dataset (V1–V28, Amount, Time).")
-
-    uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
-
-    if uploaded_file:
-        batch_df = pd.read_csv(uploaded_file)
-        st.write(f"**Uploaded:** {batch_df.shape[0]} rows, {batch_df.shape[1]} columns")
-        st.dataframe(batch_df.head(5))
-
-        if st.button("🔍 Run Batch Prediction", type="primary"):
-            try:
-                # Scale Amount & Time if present
-                if "Amount" in batch_df.columns:
-                    batch_df["Amount_Scaled"] = (batch_df["Amount"] - 88.35) / 250.12
-                if "Time" in batch_df.columns:
-                    batch_df["Time_Scaled"] = (batch_df["Time"] - 94813) / 47488
-
-                # Drop original cols if present
-                batch_input = batch_df[[f for f in feature_names if f in batch_df.columns]]
-
-                preds = model.predict(batch_input)
-                probs = model.predict_proba(batch_input)[:, 1]
-
-                batch_df["Prediction"] = ["FRAUD 🚨" if p == 1 else "Legit ✅" for p in preds]
-                batch_df["Fraud Probability"] = (probs * 100).round(2)
-
-                st.success("✅ Predictions complete!")
-
-                fraud_count = (preds == 1).sum()
-                col1, col2, col3 = st.columns(3)
-                col1.metric("Total Transactions", len(preds))
-                col2.metric("Fraudulent", fraud_count)
-                col3.metric("Legitimate", len(preds) - fraud_count)
-
-                st.dataframe(batch_df[["Prediction", "Fraud Probability"]].head(50))
-
-                # Download results
-                csv_result = batch_df.to_csv(index=False)
-                st.download_button("📥 Download Results CSV", csv_result,
-                                   file_name="fraud_predictions.csv", mime="text/csv")
-
-            except Exception as e:
-                st.error(f"Error during prediction: {e}")
-                st.info("Make sure your CSV has columns matching V1–V28 and Amount/Time.")
-
-# ── Footer ────────────────────────────────────────────────────────────────────
+model, feature_names = load_model()
+st.success("✅ Model loaded — Random Forest trained on 284,807 transactions")
 st.divider()
-st.caption("💳 Credit Card Fraud Detection | AI Subject Mini Project | Built with Streamlit")
+
+# ── Two big buttons ───────────────────────────────────────────────────────────
+st.subheader("🧪 Test the Model")
+col1, col2 = st.columns(2)
+
+run_legit = col1.button("✅ Test Legitimate Transaction", use_container_width=True, type="secondary")
+run_fraud = col2.button("🚨 Test Fraud Transaction", use_container_width=True, type="primary")
+
+# ── Show transaction details + result ─────────────────────────────────────────
+def show_result(case):
+    st.markdown("---")
+    st.markdown(f"### Transaction Details")
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Amount", f"${case['amount']:.2f}")
+    c2.metric("Time (sec)", f"{case['time']:.0f}")
+    c3.metric("Features", "V1 – V28 (PCA)")
+
+    with st.expander("🔍 View all feature values (V1–V28)"):
+        v_vals = {k: v for k, v in case.items() if k.startswith("V") and not k.startswith("V1") or k == "V1"}
+        cols = st.columns(7)
+        v_keys = [f"V{i}" for i in range(1, 29)]
+        for i, key in enumerate(v_keys):
+            cols[i % 7].metric(key, f"{case.get(key, 0):.4f}")
+
+    st.markdown("### 🎯 Prediction")
+    pred, prob = predict(case, model, feature_names)
+
+    if pred == 1:
+        st.error("## 🚨 FRAUD DETECTED")
+        st.progress(float(prob[1]))
+        cc1, cc2 = st.columns(2)
+        cc1.metric("Fraud Probability",     f"{prob[1]*100:.2f}%")
+        cc2.metric("Legitimate Probability", f"{prob[0]*100:.2f}%")
+    else:
+        st.success("## ✅ LEGITIMATE TRANSACTION")
+        st.progress(float(prob[0]))
+        cc1, cc2 = st.columns(2)
+        cc1.metric("Legitimate Probability", f"{prob[0]*100:.2f}%")
+        cc2.metric("Fraud Probability",      f"{prob[1]*100:.2f}%")
+
+    st.caption(f"Model: Random Forest | Actual label in dataset: **{'FRAUD 🚨' if case == FRAUD_CASE else 'LEGIT ✅'}**")
+
+if run_legit:
+    show_result(LEGIT_CASE)
+elif run_fraud:
+    show_result(FRAUD_CASE)
+else:
+    st.info("👆 Click one of the buttons above to run a test prediction.")
+
+st.divider()
+st.caption("Credit Card Fraud Detection | AI Subject Mini Project | Random Forest Model")
